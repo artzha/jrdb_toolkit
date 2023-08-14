@@ -134,17 +134,20 @@ def move_frame(input_dir, output_dir, calib, seq_name, file_name, labels_2d,
             # height KITTI camera = height JRDB lidar/camera
             # width KITTI camera = length JRDB lidar/camera
             # length KITTI camera = width JRDB lidar/camera
-            label_lines.append(
-                f"Pedestrian 0 {ENUM_OCCLUSION[label_2d['attributes']['occlusion']]} "
-                f"{label_3d['observation_angle']} "
-                f"{label_2d['box'][0]} {label_2d['box'][1]} "
-                f"{label_2d['box'][0] + label_2d['box'][2]} "
-                f"{label_2d['box'][1] + label_2d['box'][3]} "
-                f"{label_3d['box']['h']} {label_3d['box']['l']} "  # hwl KITTI cam == hlw jrdb lidar = hlw jrdb camera
-                f"{label_3d['box']['w']} {-label_3d['box']['cy']} "
-                f"{-label_3d['box']['cz'] + label_3d['box']['h'] / 2} "
-                f"{label_3d['box']['cx']} {rotation_y} 1\n"
-            )
+            if label_3d['attributes']['num_points']>=10: # Added to filter bboxes for evaluation purposes
+                label_lines.append(
+                    f"Pedestrian 0 {ENUM_OCCLUSION[label_2d['attributes']['occlusion']]} "
+                    f"{label_3d['observation_angle']} "
+                    f"{label_2d['box'][0]} {label_2d['box'][1]} "
+                    f"{label_2d['box'][0] + label_2d['box'][2]} "
+                    f"{label_2d['box'][1] + label_2d['box'][3]} "
+                    f"{label_3d['box']['h']} {label_3d['box']['l']} "  # hwl KITTI cam == hlw jrdb lidar = hlw jrdb camera
+                    f"{label_3d['box']['w']} {-label_3d['box']['cy']} "
+                    f"{-label_3d['box']['cz'] + label_3d['box']['h'] / 2} "
+                   
+                    f"{label_3d['box']['cx']} {rotation_y} 1\n"
+                )
+
         label_out = os.path.join(output_dir, OUT_LABEL_PATH, f'{file_idx:06d}.txt')
         with open(label_out, 'w') as f:
             f.writelines(label_lines)
@@ -200,7 +203,7 @@ def convert_jr2kitti(input_dir, output_dir, file_list, training):
               None, None, idx, training)
              for idx, (seq_name, file_name) in enumerate(file_list)])
     shutil.copytree(os.path.join(input_dir, 'calibration'),
-                    os.path.join(output_dir, 'calib'))
+                    os.path.join(output_dir, 'calib_jrdb'))
 
 
 if __name__ == "__main__":
