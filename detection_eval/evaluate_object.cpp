@@ -34,7 +34,7 @@ STATIC EVALUATION PARAMETERS
 // easy and hard evaluation level
 enum DIFFICULTY{EASY=0, HARD=1};
 
-const int32_t N_TESTIMAGES = 27661;
+const int32_t N_TESTIMAGES = 6203; // 6203 is validation set, 27661 is train set;
 
 const int32_t MIN_3D_N_POINTS = 10;
 const double MAX_3D_DIST[2] = {15, 25};
@@ -373,7 +373,6 @@ void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vect
     // classes not used for evaluation
     else
       valid_class = -1;
-
     bool ignore = false;
     bool invalid = false;
     // 3D groundtruth filter criteria
@@ -408,9 +407,13 @@ void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vect
   }
 
   // extract dontcare areas
-  for(int32_t i=0;i<gt.size(); i++)
-    if(!strcasecmp("DontCare", gt[i].box.type.c_str()))
+  for(int32_t i=0;i<gt.size(); i++) {
+    // cout << "Num dc " << gt[i].box.type.c_str() << endl;
+    // cout << "Add dc? " << !strcasecmp("DontCare", gt[i].box.type.c_str()) << endl;
+    if(!strcasecmp("DontCare", gt[i].box.type.c_str())) {
       dc.push_back(gt[i]);
+    }
+  }
 
   // extract detections bounding boxes of the current class
   for(int32_t i=0;i<det.size(); i++){
@@ -641,7 +644,7 @@ bool eval_class(CLASSES current_class,
     for(int32_t j=0; j<pr_tmp.v.size(); j++)
       v.push_back(pr_tmp.v[j]);
   }
-
+  // cout << "ignored gt " << ignored_gt.size() << " ignored det " << ignored_det.size() << " dontcare " << dontcare.size() << endl;
   // get scores that must be evaluated for recall discretization
   thresholds = getThresholds(v, n_gt);
 
@@ -723,8 +726,10 @@ void eval(string gt_dir, string result_dir, int c, bool depth, ofstream& outfile
     groundtruths_perseq[sequence] = groundtruths_seq;
     detections_perseq[sequence] = detections_seq;
   }
-  if (groundtruths.size() != N_TESTIMAGES)
+  cout << "Num gt files " << groundtruths.size() << endl;
+  if (groundtruths.size() != N_TESTIMAGES) {
     throw invalid_argument("Mismatch in number of ground truth files.");
+  }
 
   cout << "Loaded data" << endl;
 
