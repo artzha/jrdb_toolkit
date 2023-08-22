@@ -41,7 +41,7 @@ evaluate_epoch() {
     echo "Detection directory: $dt_directory"
     echo "Output file: $outfile"
 
-    ./evaluate_object "$input_directory" "$epoch" 1 $outfile 0
+    ./evaluate_object "$gt_directory" "$dt_directory" 1 $outfile 0
 }
 
 
@@ -53,12 +53,12 @@ if [ "$epoch" -eq 0 ]; then
     # Iterate through all epochs
     for epoch in $(seq 1 30); do
         # Start a new thread to evaluate the current epoch
-        evaluate_epoch "$epoch" &
+        evaluate_epoch "$epoch"
 
         # Limit the number of concurrent threads
-        if [ $(jobs -r -p | wc -l) -ge "$max_threads" ]; then
-            wait -n
-        fi
+        # if [ $(jobs -r -p | wc -l) -ge "$max_threads" ]; then
+        #     wait -n
+        # fi
     done
 else
     evaluate_epoch "$epoch"
