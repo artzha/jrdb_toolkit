@@ -755,21 +755,36 @@ void eval(string gt_dir, string result_dir, int c, bool depth, ofstream& outfile
     }
   } else {
     cout << "Starting 3D evaluation (" << CLASS_NAMES[c].c_str() << ") ..." << endl;
-    vector<double> precision_3d_hard;
-    if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_hard, BOX3D, HARD, depth)) {
+    vector<double> precision_3d_easy;
+    if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_easy, BOX3D, EASY, depth)) {
       cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
     } else {
-      write_result(outfile, "overall", precision_3d_hard);
+      write_result(outfile, "overall", precision_3d_easy);
     }
     for (auto const& groundtruths_seq : groundtruths_perseq) {
       cout << "Starting per-sequence 3D evaluation (" << groundtruths_seq.first << ", " << CLASS_NAMES[c].c_str() << ") ..." << endl;
       vector<double> precision_3d_seq;
-      if (!eval_class(cls, groundtruths_seq.second, detections_perseq[groundtruths_seq.first], false, box3DOverlap, precision_3d_seq, BOX3D, HARD, depth)) {
+      if (!eval_class(cls, groundtruths_seq.second, detections_perseq[groundtruths_seq.first], false, box3DOverlap, precision_3d_seq, BOX3D, EASY, depth)) {
         cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
       } else {
         write_result(outfile, groundtruths_seq.first, precision_3d_seq);
       }
     }
+    // vector<double> precision_3d_hard;
+    // if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_hard, BOX3D, HARD, depth)) {
+    //   cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
+    // } else {
+    //   write_result(outfile, "overall", precision_3d_hard);
+    // }
+    // for (auto const& groundtruths_seq : groundtruths_perseq) {
+    //   cout << "Starting per-sequence 3D evaluation (" << groundtruths_seq.first << ", " << CLASS_NAMES[c].c_str() << ") ..." << endl;
+    //   vector<double> precision_3d_seq;
+    //   if (!eval_class(cls, groundtruths_seq.second, detections_perseq[groundtruths_seq.first], false, box3DOverlap, precision_3d_seq, BOX3D, HARD, depth)) {
+    //     cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
+    //   } else {
+    //     write_result(outfile, groundtruths_seq.first, precision_3d_seq);
+    //   }
+    // }
   }
 }
 
