@@ -685,11 +685,105 @@ bool eval_class(CLASSES current_class,
   return true;
 }
 
+bool eval_class(CLASSES current_class,
+        const vector< vector<tGroundtruth> > &groundtruth,
+        const vector< vector<tDetection> > &detections, bool compute_aos,
+        double (*boxoverlap)(tDetection, tGroundtruth, int32_t),
+        vector<double> &precision,
+        vector<double> &recall,
+        METRIC metric, DIFFICULTY difficulty, bool depth) {
+  assert(groundtruth.size() == detections.size());
+
+  // init
+  int32_t n_gt=0;                                     // total no. of gt (denominator of recall)
+  vector<double> v, thresholds;                       // detection scores, evaluated for recall discretization
+  vector< vector<int32_t> > ignored_gt, ignored_det;  // index of ignored gt detection for current class
+  vector< vector<tGroundtruth> > dontcare;            // index of dontcare areas, included in ground truth
+
+  // for all test images do
+  for (int32_t i=0; i<groundtruth.size(); i++){
+
+    // holds ignored ground truth, ignored detections and dontcare areas for current frame
+    vector<int32_t> i_gt, i_det;
+    vector<tGroundtruth> dc;
+    CLASSES tmp_1 = (CLASSES)1;
+    // only evaluate objects of current class and ignore occluded, truncated objects
+    cleanData(tmp_1, groundtruth[i], detections[i], i_gt, dc, i_det, n_gt, difficulty, depth);
+    ignored_gt.push_back(i_gt);
+    ignored_det.push_back(i_det);
+    dontcare.push_back(dc);
+
+    // compute statistics to get recall values
+    tPrData pr_tmp = tPrData();
+    pr_tmp = computeStatistics(current_class, groundtruth[i], detections[i], dc, i_gt, i_det, false, boxoverlap, metric);
+
+    // add detection scores to vector over all images
+    for(int32_t j=0; j<pr_tmp.v.size(); j++)
+      v.push_back(pr_tmp.v[j]);
+  }
+  // cout << "ignored gt " << ignored_gt.size() << " ignored det " << ignored_det.size() << " dontcare " << dontcare.size() << endl;
+  // get scores that must be evaluated for recall discretization
+  thresholds = getThresholds(v, n_gt);
+
+  // compute TP,FP,FN for relevant scores
+  vector<tPrData> pr;
+  pr.assign(thresholds.size(),tPrData());
+  for (int32_t i=0; i<groundtruth.size(); i++){
+
+    // for all scores/recall thresholds do:
+    for(int32_t t=0; t<thresholds.size(); t++){
+      tPrData tmp = tPrData();
+      tmp = computeStatistics(current_class, groundtruth[i], detections[i], dontcare[i],
+                              ignored_gt[i], ignored_det[i], true, boxoverlap, metric,
+                              compute_aos, thresholds[t], t==38);
+
+      // add no. of TP, FP, FN, AOS for current frame to total evaluation for current threshold
+      pr[t].tp += tmp.tp;
+      pr[t].fp += tmp.fp;
+      pr[t].fn += tmp.fn;
+      if(tmp.similarity!=-1)
+        pr[t].similarity += tmp.similarity;
+    }
+  }
+
+  // compute recall, precision and AOS
+  precision.assign(N_SAMPLE_PTS, 0);
+  recall.assign(N_SAMPLE_PTS, 0);
+  double r=0;
+  for (int32_t i=0; i<thresholds.size(); i++){
+    r = pr[i].tp/(double)(pr[i].tp + pr[i].fn);
+    precision[i] = pr[i].tp/(double)(pr[i].tp + pr[i].fp);
+    recall[i] = pr[i].tp/(double)(pr[i].tp + pr[i].fn);
+  }
+
+  // filter precision and AOS using max_{i..end}(precision)
+  for (int32_t i=0; i<thresholds.size(); i++){
+    precision[i] = *max_element(precision.begin()+i, precision.end());
+    recall[i] = *max_element(recall.begin()+i, recall.end());
+  }
+
+  return true;
+}
+
 void write_result(ofstream& outfile, string exp_name, vector<double> &precisions) {
   double ap = accumulate(precisions.begin() + 1, precisions.end(), 0.0) / (N_SAMPLE_PTS - 1);
   outfile << exp_name << "," << ap ;
   for (const double& prec : precisions) {
     outfile << ',' << prec;
+  }
+  outfile << endl;
+}
+
+void write_result(ofstream& outfile, string exp_name, vector<double> &precisions, vector<double> &recalls) {
+  double ap = accumulate(precisions.begin() + 1, precisions.end(), 0.0) / (N_SAMPLE_PTS - 1);
+  double ar = accumulate(recalls.begin() + 1, recalls.end(), 0.0) / (N_SAMPLE_PTS - 1);
+  double af1 = (double)(2 * ap * ar) / (ap + ar);
+  outfile << exp_name << "," << ap << "," << ar << "," << af1;
+  for (const double& prec : precisions) {
+    outfile << ',' << prec;
+  }
+  for (const double& rec : recalls) {
+    outfile << "," << rec;
   }
   outfile << endl;
 }
@@ -755,37 +849,45 @@ void eval(string gt_dir, string result_dir, int c, bool depth, ofstream& outfile
     }
   } else {
     cout << "Starting 3D evaluation (" << CLASS_NAMES[c].c_str() << ") ..." << endl;
-    vector<double> precision_3d_easy;
-    if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_easy, BOX3D, EASY, depth)) {
+    
+    // vector<double> precision_3d_easy;
+    // vector<double> recall_3d_easy;
+    // if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_easy, recall_3d_easy, BOX3D, EASY, depth)) {
+    //     cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
+    //   } else {
+    //     write_result(outfile, "overall", precision_3d_easy, recall_3d_easy);
+    //   }
+    //   for (auto const& groundtruths_seq : groundtruths_perseq) {
+    //     cout << "Starting per-sequence 3D evaluation (" << groundtruths_seq.first << ", " << CLASS_NAMES[c].c_str() << ") ..." << endl;
+    //     vector<double> precision_3d_seq;
+    //     vector<double> recall_3d_seq;
+    //     if (!eval_class(cls, groundtruths_seq.second, detections_perseq[groundtruths_seq.first], false, box3DOverlap, precision_3d_seq, recall_3d_seq, BOX3D, EASY, depth)) {
+    //       cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
+    //     } else {
+    //       write_result(outfile, groundtruths_seq.first, precision_3d_seq, recall_3d_seq);
+    //     }
+    //   }
+    // }
+    
+    vector<double> precision_3d_hard;
+    vector<double> recall_3d_hard;
+    if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_hard, recall_3d_hard, BOX3D, HARD, depth)) {
       cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
     } else {
-      write_result(outfile, "overall", precision_3d_easy);
+      write_result(outfile, "overall", precision_3d_hard, recall_3d_hard);
     }
     for (auto const& groundtruths_seq : groundtruths_perseq) {
       cout << "Starting per-sequence 3D evaluation (" << groundtruths_seq.first << ", " << CLASS_NAMES[c].c_str() << ") ..." << endl;
       vector<double> precision_3d_seq;
-      if (!eval_class(cls, groundtruths_seq.second, detections_perseq[groundtruths_seq.first], false, box3DOverlap, precision_3d_seq, BOX3D, EASY, depth)) {
+      vector<double> recall_3d_seq;
+      if (!eval_class(cls, groundtruths_seq.second, detections_perseq[groundtruths_seq.first], false, box3DOverlap, precision_3d_seq, recall_3d_seq, BOX3D, HARD, depth)) {
         cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
       } else {
-        write_result(outfile, groundtruths_seq.first, precision_3d_seq);
+        write_result(outfile, groundtruths_seq.first, precision_3d_seq, recall_3d_seq);
       }
     }
-    // vector<double> precision_3d_hard;
-    // if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_hard, BOX3D, HARD, depth)) {
-    //   cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
-    // } else {
-    //   write_result(outfile, "overall", precision_3d_hard);
-    // }
-    // for (auto const& groundtruths_seq : groundtruths_perseq) {
-    //   cout << "Starting per-sequence 3D evaluation (" << groundtruths_seq.first << ", " << CLASS_NAMES[c].c_str() << ") ..." << endl;
-    //   vector<double> precision_3d_seq;
-    //   if (!eval_class(cls, groundtruths_seq.second, detections_perseq[groundtruths_seq.first], false, box3DOverlap, precision_3d_seq, BOX3D, HARD, depth)) {
-    //     cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
-    //   } else {
-    //     write_result(outfile, groundtruths_seq.first, precision_3d_seq);
-    //   }
-    // }
   }
+  
 }
 
 // 2D USAGE: ./evaluate_object /path/to/groundtruth /path/to/prediction 0 outfile.txt 0 # iou threshold 0.3

@@ -48,17 +48,17 @@ evaluate_epoch() {
 if [ "$epoch" -eq 0 ]; then
     echo "Evaluating all epochs"
     # Maximum number of concurrent threads
-    max_threads=4
+    max_threads=8
 
     # Iterate through all epochs
     for epoch in $(seq 1 30); do
         # Start a new thread to evaluate the current epoch
-        evaluate_epoch "$epoch"
+        evaluate_epoch "$epoch" &
 
         # Limit the number of concurrent threads
-        # if [ $(jobs -r -p | wc -l) -ge "$max_threads" ]; then
-        #     wait -n
-        # fi
+        if [ $(jobs -r -p | wc -l) -ge "$max_threads" ]; then
+            wait -n
+        fi
     done
 else
     evaluate_epoch "$epoch"
