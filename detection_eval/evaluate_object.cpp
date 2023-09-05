@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <stdexcept>
 #include <filesystem>
+#include <iomanip>  // std::setprecision()
 
 #include <dirent.h>
 
@@ -57,6 +58,10 @@ const double MIN_OVERLAP[3][3] = {{0.3, 0.5, 0.7}, {0.3, 0.5, 0.7}, {0.3, 0.5, 0
 
 // no. of recall steps that should be evaluated (discretized)
 const double N_SAMPLE_PTS = 41;
+
+/* BEGIN STAT LOGGING */
+map<size_t, string> gtdetidx_to_frame_map;
+/* END STAT LOGGING */
 
 // initialize class names
 void initGlobals () {
@@ -143,7 +148,8 @@ vector<tDetection> loadDetection(string file_name) {
     char str[255];
     if (fscanf(fp, "%s %d %d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
                    str, &trash, &trash, &trash, &d.box.alpha, &d.box.x1, &d.box.y1,
-                   &d.box.x2, &d.box.y2, &d.h, &d.w, &d.l, &d.t1, &d.t2, &d.t3,
+                   //&d.box.x2, &d.box.y2, &d.h, &d.w, &d.l, &d.t1, &d.t2, &d.t3, //old
+                   &d.box.x2, &d.box.y2, &d.l, &d.h, &d.w, &d.t1, &d.t2, &d.t3, //new
                    &d.ry, &d.thresh)==17) {
       d.box.type = str;
       detections.push_back(d);
@@ -166,7 +172,8 @@ vector<tGroundtruth> loadGroundtruth(string file_name) {
     if (fscanf(fp, "%s %d %d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %d",
                    str, &g.truncation, &g.occlusion, &g.num_points_3d,
                    &g.box.alpha, &g.box.x1, &g.box.y1, &g.box.x2, &g.box.y2,
-                   &g.h, &g.w, &g.l, &g.t1, &g.t2, &g.t3, &g.ry, &trash)==17) {
+                   //&g.h, &g.w, &g.l, &g.t1, &g.t2, &g.t3, &g.ry, &trash)==17) { // old
+                    &g.l, &g.h, &g.w, &g.t1, &g.t2, &g.t3, &g.ry, &trash)==17) { // new
       g.box.type = str;
       groundtruth.push_back(g);
     }
@@ -352,7 +359,16 @@ vector<double> getThresholds(vector<double> &v, double n_groundtruth){
   return t;
 }
 
-void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vector<tDetection> &det, vector<int32_t> &ignored_gt, vector<tGroundtruth> &dc, vector<int32_t> &ignored_det, int32_t &n_gt, DIFFICULTY difficulty, bool depth) {
+void cleanData(
+    CLASSES current_class, 
+    const vector<tGroundtruth> &gt, 
+    const vector<tDetection> &det, 
+    vector<int32_t> &ignored_gt, 
+    vector<tGroundtruth> &dc, 
+    vector<int32_t> &ignored_det, 
+    int32_t &n_gt, 
+    DIFFICULTY difficulty, bool depth
+  ) {
 
   // extract ground truth bounding boxes for current evaluation class
   for(int32_t i=0;i<gt.size(); i++){
@@ -438,16 +454,24 @@ void cleanData(CLASSES current_class, const vector<tGroundtruth> &gt, const vect
         ignore = true;
     }
     // set ignored vector for detections
-    if(ignore)
+    if(ignore) {
       ignored_det.push_back(1);
-    else if(valid_class==1)
+    } else if(valid_class==1) {
       ignored_det.push_back(0);
-    else
+    } else {
+      cout << "You should not be seeing this valid_class " << valid_class << '\n';
       ignored_det.push_back(-1);
+    }
   }
 }
 
-void write_stat_result(string outfilepre, const vector<vector<vector<int32_t> > > &tp_indices, const vector<vector<vector<int32_t> > > &fp_indices, const vector<vector<vector<int32_t> > > &fn_indices, int32_t thres_idx, int32_t frame) {
+void write_stat_result(
+  string outfilepre, const vector< vector<tGroundtruth> > &groundtruth, 
+  const vector< vector<tDetection> > &detection, 
+  const vector<vector<vector<int32_t> > > &tp_indices, 
+  const vector<vector<vector<int32_t> > > &fp_indices, 
+  const vector<vector<vector<int32_t> > > &fn_indices, int32_t thres_idx, int32_t frame
+) {
   /*
   num frames
     num thresholds
@@ -456,22 +480,40 @@ void write_stat_result(string outfilepre, const vector<vector<vector<int32_t> > 
   ofstream outfile;
   string outfilename = outfilepre + "tp.txt";
   outfile.open(outfilename);
-  for (auto tp_det_index : tp_indices[frame][thres_idx]) {
-      outfile << tp_det_index << '\n';
+  for (auto tp_gt_index : tp_indices[frame][thres_idx]) {
+    outfile << setprecision(9)  << groundtruth[frame][tp_gt_index].t1 << " "
+                                << groundtruth[frame][tp_gt_index].t2 << " "
+                                << groundtruth[frame][tp_gt_index].t3 << " "
+                                << groundtruth[frame][tp_gt_index].h << " "
+                                << groundtruth[frame][tp_gt_index].w << " "
+                                << groundtruth[frame][tp_gt_index].l << " "
+                                << groundtruth[frame][tp_gt_index].ry << '\n';
   }
   outfile.close();
 
   outfilename = outfilepre + "fp.txt";
   outfile.open(outfilename);
   for (auto fp_det_index : fp_indices[frame][thres_idx]) {
-    outfile << fp_det_index << '\n';
+    outfile << setprecision(9)  << detection[frame][fp_det_index].t1 << " "
+                                << detection[frame][fp_det_index].t2 << " "
+                                << detection[frame][fp_det_index].t3 << " "
+                                << detection[frame][fp_det_index].h << " "
+                                << detection[frame][fp_det_index].w << " "
+                                << detection[frame][fp_det_index].l << " "
+                                << detection[frame][fp_det_index].ry << '\n';
   }
   outfile.close();
 
   outfilename = outfilepre + "fn.txt";
   outfile.open(outfilename);
-  for (auto fn_stat : fn_indices[frame][thres_idx]) {
-    outfile << fn_stat << '\n';
+  for (auto fn_gt_index : fn_indices[frame][thres_idx]) {
+    outfile << setprecision(9)  << groundtruth[frame][fn_gt_index].t1 << " "
+                                << groundtruth[frame][fn_gt_index].t2 << " "
+                                << groundtruth[frame][fn_gt_index].t3 << " "
+                                << groundtruth[frame][fn_gt_index].h << " "
+                                << groundtruth[frame][fn_gt_index].w << " "
+                                << groundtruth[frame][fn_gt_index].l << " "
+                                << groundtruth[frame][fn_gt_index].ry << '\n';
   }
   outfile.close();
 }
@@ -769,6 +811,8 @@ tPrData computeStatistics(CLASSES current_class, const vector<tGroundtruth> &gt,
         if(overlap>MIN_OVERLAP[metric][current_class]){
           assigned_detection[j] = true;
           nstuff++;
+          auto fp_indices_it = find(fp_indices.begin(), fp_indices.end(), j);
+          fp_indices.erase(fp_indices_it);
         }
       }
     }
@@ -890,7 +934,7 @@ bool eval_class(CLASSES current_class,
         double (*boxoverlap)(tDetection, tGroundtruth, int32_t),
         vector<double> &precision,
         vector<double> &recall,
-        METRIC metric, DIFFICULTY difficulty, bool depth) {
+        METRIC metric, DIFFICULTY difficulty, bool depth, bool write_to_file=false) {
   assert(groundtruth.size() == detections.size());
 
   // init
@@ -947,7 +991,6 @@ bool eval_class(CLASSES current_class,
   vector<tPrData> pr;
   pr.assign(thresholds.size(),tPrData());
   for (int32_t i=0; i<groundtruth.size(); i++){
-
     // for all scores/recall thresholds do:
     for(int32_t t=0; t<thresholds.size(); t++){
       tPrData tmp = tPrData();
@@ -981,15 +1024,23 @@ bool eval_class(CLASSES current_class,
   // Save predictions from threshold with highest precision
   const size_t VIS_THRES_INDEX = size_t(N_THRESHOLDS/2);
 
-  for (int32_t frame = 0; frame<groundtruth.size(); ++frame) {
-    // cout << "Saving evaluations with for frame " << to_string(frame) << " with max threshold " << to_string(max_thres_index) << '\n';
+  if (write_to_file) {
+    for (size_t idx = 0; idx<groundtruth.size(); ++idx) {
+      // cout << "Saving evaluations with for frame " << to_string(frame) << " with max threshold " << to_string(max_thres_index) << '\n';
 
-    string outfilepre = "/robodata/arthurz/Benchmarks/jrdb_toolkit/detection_eval/eval_pr_out/" + to_string(frame) + "/";
-    filesystem::create_directory(outfilepre);
+      //Map idx to frame
+      string imageset_frame = gtdetidx_to_frame_map[idx];
+      // if (imageset_frame=="002308") {
+      //   cout << "idx " << idx << " frame " << imageset_frame << '\n';
+      // }
 
-    write_stat_result(outfilepre, tp_indices, fp_indices, fn_indices, VIS_THRES_INDEX, frame);
+      string outfilepre = "/robodata/arthurz/Benchmarks/jrdb_toolkit/detection_eval/eval_pr_out/coda2jrdbfullrangeepoch22/" + imageset_frame + "/";
+      filesystem::create_directory(outfilepre);
+
+      write_stat_result(outfilepre, groundtruth, detections, tp_indices, fp_indices, fn_indices, VIS_THRES_INDEX, idx);
+    }
+    cout << "Done writing tp, fp, fn results to files\n";
   }
-  cout << "Done writing tp, fp, fn results to files\n";
 
   // Don't apply precision filter because it amplifies precision, affecting f1 score
   // filter precision and AOS using max_{i..end}(precision)
@@ -1037,8 +1088,10 @@ void eval(string gt_dir, string result_dir, int c, bool depth, ofstream& outfile
   cout << "Loading data" << endl;
   string path;
   vector<string> sequences = list_dir(gt_dir);
+  size_t idx = 0;
   for (const auto& sequence : sequences) {
     vector<string> frames = list_dir(gt_dir + '/' + sequence);
+   
     vector<vector<tGroundtruth>> groundtruths_seq;
     vector<vector<tDetection>> detections_seq;
     for (const auto& frame : frames) {
@@ -1053,6 +1106,16 @@ void eval(string gt_dir, string result_dir, int c, bool depth, ofstream& outfile
       vector<tDetection> det = loadDetection(result_path);
       groundtruths.push_back(gt);
       detections.push_back(det);
+
+      if (frame=="002308.txt") {
+        cout << "sequence " << sequence << " idx " << idx << '\n';
+        cout << "num boxes in frame " << frame << " gt size " << gt.size() << " dt size " << det.size() << '\n';
+      }
+      //Build 1to1 map from groundtruths indices to frames in imagesets
+      size_t dotPosition = frame.find('.');
+      gtdetidx_to_frame_map[idx] = frame.substr(0, dotPosition);
+      ++idx;
+
       groundtruths_seq.push_back(gt);
       detections_seq.push_back(det);
     }
@@ -1110,7 +1173,7 @@ void eval(string gt_dir, string result_dir, int c, bool depth, ofstream& outfile
     
     vector<double> precision_3d_hard;
     vector<double> recall_3d_hard;
-    if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_hard, recall_3d_hard, BOX3D, HARD, depth)) {
+    if (!eval_class(cls, groundtruths, detections, false, box3DOverlap, precision_3d_hard, recall_3d_hard, BOX3D, HARD, depth, true)) {
       cout << CLASS_NAMES[c].c_str() << " evaluation failed." << endl;
     } else {
       write_result(outfile, "overall", precision_3d_hard, recall_3d_hard);
